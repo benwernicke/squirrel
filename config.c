@@ -65,6 +65,25 @@ static src_t src[] = {
         .file_name = "ds_error.h",
         .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/ds_error/ds_error.h",
     },
+    {
+        .type = SRC_FILE,
+        .identifier = "path",
+        .file_name = "path.c",
+        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/path/path.c",
+        .compile_flags = "-Ofast -march=native",
+    },
+    {
+        .type = SRC_HEADER,
+        .identifier = "path",
+        .file_name = "path.h",
+        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/path/path.h",
+    },
+    {
+        .type = SRC_HEADER,
+        .identifier = "path",
+        .file_name = "ds_error.h",
+        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/ds_error/ds_error.h",
+    },
 };
 
 src_t* get_src(uint64_t* len)

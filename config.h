@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define COMPILER "gcc"
+#define AUTO_COMPILE_INSTRUCTIONS
 
 typedef enum{
     SRC_FILE,

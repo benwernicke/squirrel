@@ -1,4 +1,7 @@
 #include "config.h"
+/*#include "lib/buffer.h"*/
+#include "lib/path.h"
+#include "lib/vector.h"
 #include <ctype.h>
 #include <curl/curl.h>
 #include <curl/easy.h>
@@ -9,6 +12,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+
+vector_t* find_src_by_identifier(char* identifier);
+void download_files(vector_t* files_to_download);
 
 size_t write_data(void* ptr, size_t size, size_t nmemb, FILE* stream)
 {
@@ -136,74 +142,44 @@ void configure_includes_of_file(char* path)
     free(file_content);
 }
 
-void configure_includes(src_t* src_files, uint64_t len)
+void configure_includes(vector_t* files_to_configure)
 {
-    uint64_t i;
     fprintf(stdout, GREEN "Configuring includes:\n" RESET);
-    char name[132];
-    if (len == 0) {
+    uint64_t size;
+    vector_size(files_to_configure, &size);
+    if (size == 0) {
         fprintf(stdout, "\t--none--\n");
     }
-    for (i = 0; i < len; i++) {
-        strcpy(name, "lib/");
-        strcat(name, src_files[i].file_name);
-        fprintf(stdout, "\t%s\n", name);
-        configure_includes_of_file(name);
+    char* path_buf = NULL;
+    uint64_t path_buf_len = 0;
+    src_t** iter;
+    src_t** end;
+    vector_begin(files_to_configure, (void***)&iter);
+    vector_end(files_to_configure, (void***)&end);
+    for (; iter != end; iter++) {
+        path_cat_or_panic(&path_buf, &path_buf_len, "lib/", (*iter)->file_name);
+        fprintf(stdout, "\t%s\n", path_buf);
+        configure_includes_of_file(path_buf);
     }
 }
 
-#define cat_path(b, l, ...) cat_path_(b, l, __VA_ARGS__, NULL)
-
-int cat_path_(char** buf, uint64_t* buf_len, ...)
-{
-    va_list ap;
-    va_start(ap, buf_len);
-
-    char* next_arg = va_arg(ap, char*);
-    uint64_t curr_len = strlen(next_arg);
-    if (curr_len >= *buf_len) {
-        *buf_len += (curr_len << 1);
-        *buf = realloc(*buf, *buf_len);
-        if (buf == NULL) {
-            return -1;
-        }
-    }
-    strcpy(*buf, next_arg);
-
-    bool add_slash = 0;
-    while ((next_arg = va_arg(ap, char*)) != NULL) {
-        add_slash = 0;
-        if ((*buf)[curr_len - 1] != '/') {
-            add_slash = 1;
-        }
-        curr_len += strlen(next_arg) + add_slash;
-        if (curr_len >= *buf_len) {
-            *buf_len += (curr_len << 1);
-            *buf = realloc(*buf, *buf_len);
-            if (*buf == NULL) {
-                return -1;
-            }
-        }
-        if (add_slash) {
-            strcat(*buf, "/");
-        }
-        strcat(*buf, next_arg);
-    }
-    va_end(ap);
-    return 0;
-}
-
-void add_compile_instructions(src_t* src_files, uint64_t len)
+void add_compile_instructions(vector_t* files_to_add)
 {
     // check if compile instructions are needed
     {
+        src_t** iter;
+        src_t** end;
+        vector_begin(files_to_add, (void***)&iter);
+        vector_end(files_to_add, (void***)&end);
         bool all_none_src = 1;
-        uint64_t i;
-        for (i = 0; i < len; i++) {
-            if (src_files[i].type == SRC_FILE) {
+
+        for (; iter != end; iter++) {
+            if ((*iter)->type == SRC_FILE) {
                 all_none_src = 0;
+                break;
             }
         }
+
         if (all_none_src) { // len == 0 implicitly in there
             fprintf(stdout, GREEN "Adding compile instructions: " RESET "\n");
             fprintf(stdout, "\t--none--\n");
@@ -254,18 +230,20 @@ void add_compile_instructions(src_t* src_files, uint64_t len)
     // actually add compile instruction for every source file (.type == SRC_FILE) in src_files
     {
         fprintf(stdout, GREEN "Adding compile instructions: " RESET "\n");
-        uint64_t i;
+        src_t** iter;
+        src_t** end;
+        vector_begin(files_to_add, (void***)&iter);
+        vector_end(files_to_add, (void***)&end);
         fprintf(fh, "\n//Added by squirrel\n");
         char* path_buf = NULL;
         uint64_t path_buf_len = 0;
-        for (i = 0; i < len; i++) {
-            if (src_files[i].type == SRC_FILE) {
-                if (cat_path(&path_buf, &path_buf_len, "lib/", src_files[i].file_name) != 0) {
-                    fprintf(stderr, RED "Error: " RESET "could not cat path, probably bad_alloc\n");
-                    exit(1);
-                }
+
+        for (; iter != end; iter++) {
+            if ((*iter)->type == SRC_FILE) {
+                path_cat_or_panic(&path_buf, &path_buf_len, "lib/", (*iter)->file_name);
                 fprintf(stdout, "\t%s\n", path_buf);
-                fprintf(fh, "compile_object(\"%s\", \"%s\", \"build/", path_buf, src_files[i].compile_flags);
+                fprintf(fh, "compile_object(\"%s\", \"%s\", \"", path_buf, (*iter)->compile_flags);
+                path_cat_or_panic(&path_buf, &path_buf_len, "build/", (*iter)->file_name);
                 path_buf[strlen(path_buf) - 1] = 'o';
                 fprintf(fh, "%s\");\n", path_buf);
             }
@@ -309,84 +287,79 @@ void stolower(char* s)
 
 void get(char* identifier)
 {
-    uint64_t len = 0;
-    src_t* src = get_src(&len);
-    uint64_t i;
+    vector_t* files_to_get = find_src_by_identifier(identifier);
+    download_files(files_to_get);
+    configure_includes(files_to_get);
 
-    src_t* src_files = malloc(4 * sizeof(*src_files));
-    uint64_t src_files_used = 0;
-    uint64_t src_files_allocated = 4;
+#ifdef AUTO_COMPILE_INSTRUCTIONS
+    add_compile_instructions(files_to_get);
+#endif
 
-    fprintf(stdout, GREEN "Downloading:\n" RESET);
-    bool download_curr_file = 1;
-    char* path_buf = NULL;
-    uint64_t path_buf_len = 0;
-    for (i = 0; i < len; i++) {
-        if (strcmp(identifier, src[i].identifier) == 0) {
-            download_curr_file = 1;
-            if (cat_path(&path_buf, &path_buf_len, "lib/", src[i].file_name) != 0) {
-                fprintf(stderr, RED "Error: " RESET "while cat_path, probably bad_alloc\n");
-                exit(1);
-            }
-            if (file_exists(path_buf)) {
-                char* s = NULL;
-                int64_t len = 0;
-                do {
-                    fprintf(stdout, "\n\t%s already exists, still download? [y/n]: ", path_buf);
-                    len = getline(&s, (uint64_t*)&len, stdin);
-                    stolower(s);
-                } while (strcmp(s, "y\n") != 0 && strcmp(s, "n\n") != 0);
-                if (s[0] == 'n') {
-                    download_curr_file = 0;
+    vector_free(files_to_get);
+}
+
+vector_t* find_src_by_identifier(char* identifier)
+{
+    vector_t* files = NULL;
+    if (vector_create(&files, 4) != SUCCESS) {
+        fprintf(stderr, RED "Error: " RESET "could not allocate files buffer: bad_alloc\n");
+        exit(1);
+    }
+    uint64_t src_len = 0;
+
+    // iterate over src from config.c and push to vec if identifier match
+    {
+        src_t* src = get_src(&src_len);
+        src_t** files_more = NULL;
+        uint64_t i;
+        for (i = 0; i < src_len; i++) {
+            if (strcmp(identifier, src[i].identifier) == 0) {
+                if (vector_more(files, (void***)&files_more) != SUCCESS) {
+                    fprintf(stderr, RED "Error: " RESET "could not allocate files buffer: bad_alloc\n");
+                    exit(1);
                 }
-                free(s);
-            }
-            if (download_curr_file) {
-                fprintf(stdout, "\t%s from %s\n", path_buf, src[i].url);
-                download_file(path_buf, src[i].url);
-                if (src_files_used >= src_files_allocated) {
-                    src_files_allocated <<= 1;
-                    src_files = realloc(src_files, src_files_allocated * sizeof(*src_files));
-                }
-                src_files[src_files_used++] = src[i];
+                *files_more = &src[i];
             }
         }
     }
-    free(path_buf);
 
-    add_compile_instructions(src_files, src_files_used);
-    configure_includes(src_files, src_files_used);
-    free(src_files);
+    // check if anything was found if not panic with error msg -> used probably typed identifier wrong
+    {
+        uint64_t size = 0;
+        vector_size(files, &size);
+        if (size == 0) {
+            fprintf(stderr, RED "Error: " RESET "could not find any src declarations with identifier: %s\n", identifier);
+            exit(1);
+        }
+    }
+
+    return files;
+}
+
+void download_files(vector_t* files_to_download)
+{
+    src_t** iter;
+    src_t** end;
+    vector_begin(files_to_download, (void***)&iter);
+    vector_end(files_to_download, (void***)&end);
+    char* path_buf = NULL;
+    uint64_t path_buf_len = 0;
+    fprintf(stdout, GREEN "Downloading:\n" RESET);
+    while (iter != end) {
+        path_cat_or_panic(&path_buf, &path_buf_len, "lib/", (*iter)->file_name);
+        fprintf(stdout, "\t%s from %s\n", path_buf, (*iter)->url);
+        download_file(path_buf, (*iter)->url);
+        iter++;
+    }
+    free(path_buf);
 }
 
 void update(char* identifier)
 {
-    uint64_t len = 0;
-    src_t* src = get_src(&len);
-    uint64_t i;
-
-    src_t* src_files = malloc(4 * sizeof(*src_files));
-    uint64_t src_files_used = 0;
-    uint64_t src_files_allocated = 4;
-
-    fprintf(stdout, GREEN "Downloading:\n" RESET);
-    for (i = 0; i < len; i++) {
-        if (strcmp(identifier, src[i].identifier) == 0) {
-            char name[5 + strlen(src[i].file_name)];
-            strcpy(name, "lib/");
-            strcat(name, src[i].file_name);
-            fprintf(stdout, "\t%s from %s\n", name, src[i].url);
-            download_file(name, src[i].url);
-
-            if (src_files_used >= src_files_allocated) {
-                src_files_allocated <<= 1;
-                src_files = realloc(src_files, src_files_allocated * sizeof(*src_files));
-            }
-            src_files[src_files_used++] = src[i];
-        }
-    }
-    configure_includes(src_files, src_files_used);
-    free(src_files);
+    vector_t* files_to_update = find_src_by_identifier(identifier);
+    download_files(files_to_update);
+    configure_includes(files_to_update);
+    vector_free(files_to_update);
 }
 
 void update_cbuild()
@@ -423,6 +396,10 @@ void parse_argv(char** argv)
         } else {
             update(*argv);
         }
+    } else if (strcmp(*argv, "usage") == 0) {
+        help();
+    } else {
+        fprintf(stderr, RED "Error: " RESET "mode: '%s' was not found see 'sqirrel usage' for usage\n", *argv);
     }
 }
 
