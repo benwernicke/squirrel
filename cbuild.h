@@ -111,7 +111,7 @@ void compile_object(char* path, char* flags, char* obj)
 
     if (!exists || last_mod_src > last_mod_obj) {
         printf(GREEN "compiling: " RESET "%s -o %s -c %s\n", COMPILER, obj, path);
-        if (run_command(COMPILER, "-o", obj, "-c", path) != 0) {
+        if (run_command(COMPILER, "-o", obj, "-c", path, flags) != 0) {
             exit(1);
         }
     }
