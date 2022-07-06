@@ -1,5 +1,5 @@
 #define CBUILD
-#include "cbuild.h"
+#include "lib/cbuild.h"
 
 #define FLAGS "-g -Wall -pedantic -lcurl"
 #define FAST_FLAGS "-Ofast -march=native -lcurl"
@@ -9,6 +9,7 @@ void compile_everything(char* flags)
     compile_object("squirrel.c", flags, "build/squirrel.o");
     compile_object("config.c", flags, "build/config.o");
     compile_object("lib/path.c", flags, "build/path.o");
+    compile_object("lib/set.c", flags, "build/set.o");
     compile_object("lib/vector.c", flags, "build/vector.o");
     compile_object_directory("main", flags, "build/");
 }

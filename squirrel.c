@@ -1,7 +1,9 @@
 #include "config.h"
-/*#include "lib/buffer.h"*/
+#include "lib/panic.h"
 #include "lib/path.h"
+#include "lib/set.h"
 #include "lib/vector.h"
+
 #include <ctype.h>
 #include <curl/curl.h>
 #include <curl/easy.h>
@@ -43,19 +45,64 @@ void download_file(char* path, char* url)
         fprintf(stderr, RED "Error: " RESET "could not download: %s from url: %s\n", path, url);
     }
 }
+//.................----------------------------------------------------------------
+char help_page[] = "sqirrel\n"
+                   "~~~~~~~\n"
+                   "squirrel usage               print this page and exit\n"
+                   "\n"
+                   "squirrel init                will create default file system, download\n"
+                   "                             cbuild.h, create cbuild.c and compile it\n"
+                   "\n"
+                   "sqirrel get <identifier>     download files associated with <identifier>\n"
+                   "                             configure the include statements from those\n"
+                   "                             files and add compile instructions to 'cbuild.c'\n"
+                   "                             if AUTO_COMPILE_INSTRUCTIONS is defined\n"
+                   "\n"
+                   "squirrel update <identifier> download files associated with <identifier>\n"
+                   "                             and configure the include statements from those\n"
+                   "\n"
+                   "\n";
 
 void help()
 {
+    puts(help_page);
 }
 
 char default_cbuild[] = "#define CBUILD\n"
                         "#include \"lib/cbuild.h\"\n"
-                        "\n\n"
+                        "\n"
+                        "#define FLAGS \"-g -Wall -pedantic\"\n"
+                        "#define FAST_FLAGS \"-Ofast -march=native\"\n"
+                        "\n"
+                        "void clean(void)\n"
+                        "{\n"
+                        "    printf(\"rm build/*\\n\");\n"
+                        "    system(\"rm build/*\");\n"
+                        "\n"
+                        "    printf(\"rm out\\n\");\n"
+                        "    system(\"rm out\");\n"
+                        "}\n"
+                        "\n"
                         "int main(int argc, char** argv)\n"
                         "{\n"
-                        "\tauto_update();\n"
+                        "    auto_update();\n"
+                        "    compile_object(\"main.c\", FLAGS, \"build/main.o\");\n"
+                        "    compile_object_directory(\"out\", FLAGS, \"build/\");\n"
+                        "\n"
+                        "    if (argc == 1) {\n"
+                        "    } else if (strcmp(argv[1], \"clean\") == 0) {\n"
+                        "        clean();\n"
+                        "    }\n"
                         "\treturn 0;\n"
                         "}\n";
+
+char default_main[] = "#include<stdio.h>\n"
+                      "\n"
+                      "int main(int argc, char** argv)\n"
+                      "{\n"
+                      "\tprintf(\"Hello World!\\n\");\n"
+                      "\treturn 0;\n"
+                      "}";
 
 void init()
 {
@@ -67,26 +114,25 @@ void init()
 
     fprintf(stdout, GREEN "Downloading:\n" RESET "\tlib/cbuild.h from https://raw.githubusercontent.com/benwernicke/cbuild/main/cbuild.h\n");
     download_file("lib/cbuild.h", "https://raw.githubusercontent.com/benwernicke/cbuild/main/cbuild.h");
-
     FILE* fh_cbuild = fopen("cbuild.c", "w");
-    if (fh_cbuild != NULL) {
-        fprintf(stdout, GREEN "Creating:\n " RESET "\tdefault cbuild.c\n");
-        fprintf(fh_cbuild, "%s", default_cbuild);
-        fclose(fh_cbuild);
-    } else {
-        fprintf(stderr, RED "Error: " RESET "could not open cbuild.c: %s\n", strerror(errno));
-    }
+    FILE* fh_main = fopen("main.c", "w");
+    panic_if(fh_cbuild == NULL || fh_main == NULL, "could not create 'cbuild.c' and 'main.'");
+    fprintf(stdout, GREEN "Creating: \n" RESET);
+    fprintf(stdout, "\tcbuild.c\n");
+    fprintf(stdout, "\tmain.c\n");
+    fprintf(fh_cbuild, "%s", default_cbuild);
+    fprintf(fh_main, "%s", default_main);
+    fclose(fh_cbuild);
+    fclose(fh_main);
+
     fprintf(stdout, GREEN "Compiling: \n" RESET "\tcbuild.c\n");
-    system(COMPILER " cbuild.c -o cbuild -Ofast -march=native");
+    system(COMPILER " cbuild.c -o cbuild");
 }
 
 char* read_file_to_memory(char* file_name)
 {
     FILE* fh = fopen(file_name, "rb");
-    if (fh == NULL) {
-        fprintf(stderr, RED "Error: " RESET "could not open %s: %s\n", file_name, strerror(errno));
-        exit(1);
-    }
+    panic_if(fh == NULL, "could not open %s: %s", file_name, strerror(errno));
     fseek(fh, 0, SEEK_END);
     uint64_t fh_len = ftell(fh);
     rewind(fh);
@@ -103,10 +149,7 @@ void configure_includes_of_file(char* path)
     char* prev = s;
 
     FILE* fh = fopen(path, "w");
-    if (fh == NULL) {
-        fprintf(stderr, RED "Error: " RESET "could not open: %s for include configuration: %s\n", path, strerror(errno));
-        exit(1);
-    }
+    panic_if(fh == NULL, "could not open: %s for include configuration: %s", path, strerror(errno));
 
     do {
         while (*s && strncmp(s, "#include", 8) != 0) {
@@ -197,27 +240,18 @@ void add_compile_instructions(vector_t* files_to_add)
     FILE* fh = NULL;
     {
         fh = fopen("cbuild.c", "w");
-        if (fh == NULL) {
-            fprintf(stderr, RED "Error: " RESET "could not open cbuild.c: %s\n", strerror(errno));
-            exit(1);
-        }
+        panic_if(fh == NULL, "could not open cbuild.c: %s", strerror(errno));
     }
     // find pointer for assertion .. after auto_update[...]()[...];
     {
         while (*s && strncmp(s, "auto_update", strlen("auto_update")) != 0) {
             s++;
         }
-        if (*s == '\0') {
-            fprintf(stderr, RED "Error: " RESET "could not add compile instructions: cbuild.c does not contain auto_update(); consider adding it :)\n");
-            exit(1);
-        }
+        panic_if(*s == '\0', "could not add, compile instructions: cbuild.c does not contain 'auto_update();' consider adding it :)");
         while (*s && *s != ';') {
             s++;
         }
-        if (*s == '\0') {
-            fprintf(stderr, RED "Error: " RESET "syntax error in cbuild.c\n");
-            exit(1);
-        }
+        panic_if(*s == '\0', "syntax error in cbuild.c");
         s++;
     }
     // dump previously parsed stuff until after auto_update(); insert '\0' for cstr and store char in tmp for later
@@ -242,7 +276,7 @@ void add_compile_instructions(vector_t* files_to_add)
             if ((*iter)->type == SRC_FILE) {
                 path_cat_or_panic(&path_buf, &path_buf_len, "lib/", (*iter)->file_name);
                 fprintf(stdout, "\t%s\n", path_buf);
-                fprintf(fh, "compile_object(\"%s\", \"%s\", \"", path_buf, (*iter)->compile_flags);
+                fprintf(fh, "compile_object(\"%s\", FLAGS\"%s\", \"", path_buf, (*iter)->compile_flags);
                 path_cat_or_panic(&path_buf, &path_buf_len, "build/", (*iter)->file_name);
                 path_buf[strlen(path_buf) - 1] = 'o';
                 fprintf(fh, "%s\");\n", path_buf);
@@ -301,10 +335,7 @@ void get(char* identifier)
 vector_t* find_src_by_identifier(char* identifier)
 {
     vector_t* files = NULL;
-    if (vector_create(&files, 4) != SUCCESS) {
-        fprintf(stderr, RED "Error: " RESET "could not allocate files buffer: bad_alloc\n");
-        exit(1);
-    }
+    panic_if(vector_create(&files, 4) != SUCCESS, "could not allocate files buffer: bad_alloc");
     uint64_t src_len = 0;
 
     // iterate over src from config.c and push to vec if identifier match
@@ -314,10 +345,7 @@ vector_t* find_src_by_identifier(char* identifier)
         uint64_t i;
         for (i = 0; i < src_len; i++) {
             if (strcmp(identifier, src[i].identifier) == 0) {
-                if (vector_more(files, (void***)&files_more) != SUCCESS) {
-                    fprintf(stderr, RED "Error: " RESET "could not allocate files buffer: bad_alloc\n");
-                    exit(1);
-                }
+                panic_if(vector_more(files, (void***)&files_more) != SUCCESS, "could not realloc files buffer: bad_alloc");
                 *files_more = &src[i];
             }
         }
@@ -327,10 +355,7 @@ vector_t* find_src_by_identifier(char* identifier)
     {
         uint64_t size = 0;
         vector_size(files, &size);
-        if (size == 0) {
-            fprintf(stderr, RED "Error: " RESET "could not find any src declarations with identifier: %s\n", identifier);
-            exit(1);
-        }
+        panic_if(size == 0, "could not find any src declarations with identifier: %s", identifier);
     }
 
     return files;
@@ -366,7 +391,61 @@ void update_cbuild()
 {
     fprintf(stdout, GREEN "Downloading:\n" RESET "\tlib/cbuild.h from https://raw.githubusercontent.com/benwernicke/cbuild/main/cbuild.h\n");
     download_file("lib/cbuild.h", "https://raw.githubusercontent.com/benwernicke/cbuild/main/cbuild.h");
+    fprintf(stdout, GREEN "Compiling:\n" RESET);
+    fprintf(stdout, "\t" COMPILER " cbuild.c -o cbuild -Ofast -march=native\n");
     system(COMPILER " cbuild.c -o cbuild -Ofast -march=native");
+}
+
+void dump_identifier()
+{
+    uint64_t src_len = 0;
+    src_t* src = get_src(&src_len);
+
+    bool already_seen = 0;
+    set_t* seen = NULL;
+    panic_if(set_create(&seen, set_str_djb2, set_str_cmp, src_len) != SUCCESS, "could not create seen hashset: bad_alloc");
+
+    uint64_t i;
+    printf("Availabe identifier: \n");
+    for (i = 0; i < src_len; i++) {
+        if (!set_contains(seen, src[i].identifier)) {
+            printf("\t%s\n", src[i].identifier);
+            set_insert(seen, src[i].identifier);
+        }
+    }
+    set_free(seen);
+}
+
+void info(char* identifier)
+{
+    vector_t* src = find_src_by_identifier(identifier);
+
+    src_t** iter;
+    src_t** end;
+    vector_begin(src, (void***)&iter);
+    vector_end(src, (void***)&end);
+
+    fprintf(stdout, GREEN "Info: " RESET "%s\n", identifier);
+    for (; iter != end; iter++) {
+        printf("\t%s:\n", (*iter)->file_name);
+        printf("\t\tfrom:\t%s\n", (*iter)->url);
+        printf("\t\ttype:\t");
+        switch ((*iter)->type) {
+        case SRC_FILE:
+            printf("source file\n");
+            printf("\t\tflags:\t%s\n", (*iter)->compile_flags);
+            break;
+        case SRC_HEADER:
+            printf("header file\n");
+            break;
+        case SRC_OTHER:
+            printf("neither source nor header file\n");
+            break;
+        }
+        printf("\n");
+    }
+
+    vector_free(src);
 }
 
 void parse_argv(char** argv)
@@ -380,17 +459,11 @@ void parse_argv(char** argv)
         return;
     } else if (strcmp(*argv, "get") == 0) {
         argv++;
-        if (*argv == NULL) {
-            fprintf(stderr, RED "Error: " RESET "get expects identifier argument\n");
-            exit(1);
-        }
+        panic_if(*argv == NULL, "get expects identifier argument");
         get(*argv);
     } else if (strcmp(*argv, "update") == 0) {
         argv++;
-        if (*argv == NULL) {
-            fprintf(stderr, RED "Error: " RESET "update expects identifier argument\n");
-            exit(1);
-        }
+        panic_if(*argv == NULL, "update expects identifier argument");
         if (strcmp(*argv, "cbuild") == 0) {
             update_cbuild();
         } else {
@@ -398,13 +471,21 @@ void parse_argv(char** argv)
         }
     } else if (strcmp(*argv, "usage") == 0) {
         help();
+    } else if (strcmp(*argv, "identifiers") == 0) {
+        dump_identifier();
+    } else if (strcmp(*argv, "info") == 0) {
+        argv++;
+        panic_if(*argv == NULL, "info expects identifier argument");
+        info(*argv);
     } else {
-        fprintf(stderr, RED "Error: " RESET "mode: '%s' was not found see 'sqirrel usage' for usage\n", *argv);
+        panic("mode: '%s' was not found see 'sqirrel usage' for usage", *argv);
     }
 }
 
 int main(int argc, char** argv)
 {
+    putc('\n', stdout);
     parse_argv(argv);
+    putc('\n', stdout);
     return 0;
 }

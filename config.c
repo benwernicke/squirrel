@@ -8,12 +8,12 @@
 // if more needed: alter src_t struct in config.h
 
 static src_t src[] = {
+    //vector ------------------------------------------------------------------------------------------------------------------------
     {
         .type = SRC_FILE,
         .identifier = "vector",
         .file_name = "vector.c",
         .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/vector/vector.c",
-        .compile_flags = "-Ofast -march=native",
     },
     {
         .type = SRC_HEADER,
@@ -27,31 +27,31 @@ static src_t src[] = {
         .file_name = "ds_error.h",
         .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/ds_error/ds_error.h",
     },
+    //set ------------------------------------------------------------------------------------------------------------------------
     {
         .type = SRC_HEADER,
-        .identifier = "hashset",
+        .identifier = "set",
         .file_name = "ds_error.h",
         .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/ds_error/ds_error.h",
     },
     {
         .type = SRC_HEADER,
-        .identifier = "hashset",
-        .file_name = "hashset.h",
-        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/hashset/hashset.h",
+        .identifier = "set",
+        .file_name = "set.h",
+        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/set/set.h",
     },
     {
         .type = SRC_FILE,
-        .identifier = "hashset",
-        .file_name = "hashset.c",
-        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/hashset/hashset.c",
-        .compile_flags = "-Ofast -march=native",
+        .identifier = "set",
+        .file_name = "set.c",
+        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/set/set.c",
     },
+    //buffer ------------------------------------------------------------------------------------------------------------------------
     {
         .type = SRC_FILE,
         .identifier = "buffer",
         .file_name = "buffer.c",
         .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/buffer/buffer.c",
-        .compile_flags = "-Ofast -march=native",
     },
     {
         .type = SRC_HEADER,
@@ -65,12 +65,12 @@ static src_t src[] = {
         .file_name = "ds_error.h",
         .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/ds_error/ds_error.h",
     },
+    //path ------------------------------------------------------------------------------------------------------------------------
     {
         .type = SRC_FILE,
         .identifier = "path",
         .file_name = "path.c",
         .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/path/path.c",
-        .compile_flags = "-Ofast -march=native",
     },
     {
         .type = SRC_HEADER,
@@ -81,6 +81,33 @@ static src_t src[] = {
     {
         .type = SRC_HEADER,
         .identifier = "path",
+        .file_name = "ds_error.h",
+        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/ds_error/ds_error.h",
+    },
+    //panic ------------------------------------------------------------------------------------------------------------------------
+    {
+        .type = SRC_HEADER,
+        .identifier = "panic",
+        .file_name = "panic.h",
+        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/panic/panic.h",
+    },
+
+    //map ------------------------------------------------------------------------------------------------------------------------
+    {
+        .type = SRC_FILE,
+        .identifier = "map",
+        .file_name = "map.c",
+        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/map/map.c",
+    },
+    {
+        .type = SRC_HEADER,
+        .identifier = "map",
+        .file_name = "map.h",
+        .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/map/map.h",
+    },
+    {
+        .type = SRC_HEADER,
+        .identifier = "map",
         .file_name = "ds_error.h",
         .url = "https://raw.githubusercontent.com/benwernicke/datastructures/main/ds_error/ds_error.h",
     },
