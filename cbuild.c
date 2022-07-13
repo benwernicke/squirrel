@@ -11,6 +11,8 @@ void compile_everything(char* flags)
     compile_object("lib/path.c", flags, "build/path.o");
     compile_object("lib/set.c", flags, "build/set.o");
     compile_object("lib/vector.c", flags, "build/vector.o");
+    compile_object("lib/hash.c", flags, "build/hash.o");
+    compile_object("lib/cmp.c", flags, "build/cmp.o");
     compile_object_directory("main", flags, "build/");
 }
 

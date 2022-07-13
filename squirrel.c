@@ -1,8 +1,11 @@
 #include "config.h"
+#include "lib/cmp.h"
+#include "lib/hash.h"
 #include "lib/panic.h"
 #include "lib/path.h"
 #include "lib/set.h"
 #include "lib/vector.h"
+#include "type.h"
 
 #include <ctype.h>
 #include <curl/curl.h>
@@ -68,42 +71,6 @@ void help()
     puts(help_page);
 }
 
-char default_cbuild[] = "#define CBUILD\n"
-                        "#include \"lib/cbuild.h\"\n"
-                        "\n"
-                        "#define FLAGS \"-g -Wall -pedantic\"\n"
-                        "#define FAST_FLAGS \"-Ofast -march=native\"\n"
-                        "\n"
-                        "void clean(void)\n"
-                        "{\n"
-                        "    printf(\"rm build/*\\n\");\n"
-                        "    system(\"rm build/*\");\n"
-                        "\n"
-                        "    printf(\"rm out\\n\");\n"
-                        "    system(\"rm out\");\n"
-                        "}\n"
-                        "\n"
-                        "int main(int argc, char** argv)\n"
-                        "{\n"
-                        "    auto_update();\n"
-                        "    compile_object(\"main.c\", FLAGS, \"build/main.o\");\n"
-                        "    compile_object_directory(\"out\", FLAGS, \"build/\");\n"
-                        "\n"
-                        "    if (argc == 1) {\n"
-                        "    } else if (strcmp(argv[1], \"clean\") == 0) {\n"
-                        "        clean();\n"
-                        "    }\n"
-                        "\treturn 0;\n"
-                        "}\n";
-
-char default_main[] = "#include<stdio.h>\n"
-                      "\n"
-                      "int main(int argc, char** argv)\n"
-                      "{\n"
-                      "\tprintf(\"Hello World!\\n\");\n"
-                      "\treturn 0;\n"
-                      "}";
-
 void init()
 {
     fprintf(stdout, GREEN "Creating directories: \n" RESET);
@@ -120,8 +87,8 @@ void init()
     fprintf(stdout, GREEN "Creating: \n" RESET);
     fprintf(stdout, "\tcbuild.c\n");
     fprintf(stdout, "\tmain.c\n");
-    fprintf(fh_cbuild, "%s", default_cbuild);
-    fprintf(fh_main, "%s", default_main);
+    fprintf(fh_cbuild, "%s", get_default_cbuild());
+    fprintf(fh_main, "%s", get_default_main());
     fclose(fh_cbuild);
     fclose(fh_main);
 
@@ -142,6 +109,11 @@ char* read_file_to_memory(char* file_name)
     return file_content;
 }
 
+bool is_include_statement(void* s)
+{
+    return strncmp(s, "#include", 8) == 0;
+}
+
 void configure_includes_of_file(char* path)
 {
     char* file_content = read_file_to_memory(path);
@@ -151,34 +123,24 @@ void configure_includes_of_file(char* path)
     FILE* fh = fopen(path, "w");
     panic_if(fh == NULL, "could not open: %s for include configuration: %s", path, strerror(errno));
 
-    do {
-        while (*s && strncmp(s, "#include", 8) != 0) {
-            s++;
-        }
-        while (*s && *s != '"' && *s != '<') {
-            s++;
-        }
+    s = strstr(s, "#include");
+    while (s != NULL) {
+        s = strpbrk(s, ";<");
         if (*s == '"') {
             *s = '\0';
             fprintf(fh, "%s", prev);
-            while (*s != '"') {
-                s++;
-            }
+            prev = ++s;
+            s = index(s, '"');
             *s = '\0';
-            s--;
-            while (*s && *s != '/') {
-                s--;
-            }
+            s = rindex(prev, '/');
             s++;
             fprintf(fh, "\"%s\"", s);
-            s++;
-            while (*s) {
-                s++;
-            }
+            s = index(s, '\0');
             s++;
             prev = s;
         }
-    } while (*s);
+        s = strstr(s, "#include");
+    }
     fprintf(fh, "%s", prev);
 
     fclose(fh);
@@ -188,17 +150,14 @@ void configure_includes_of_file(char* path)
 void configure_includes(vector_t* files_to_configure)
 {
     fprintf(stdout, GREEN "Configuring includes:\n" RESET);
-    uint64_t size;
-    vector_size(files_to_configure, &size);
+    uint64_t size = vector_size(files_to_configure);
     if (size == 0) {
         fprintf(stdout, "\t--none--\n");
     }
     char* path_buf = NULL;
     uint64_t path_buf_len = 0;
-    src_t** iter;
-    src_t** end;
-    vector_begin(files_to_configure, (void***)&iter);
-    vector_end(files_to_configure, (void***)&end);
+    src_t** iter = (src_t**)vector_begin(files_to_configure);
+    src_t** end = (src_t**)vector_end(files_to_configure);
     for (; iter != end; iter++) {
         path_cat_or_panic(&path_buf, &path_buf_len, "lib/", (*iter)->file_name);
         fprintf(stdout, "\t%s\n", path_buf);
@@ -210,10 +169,8 @@ void add_compile_instructions(vector_t* files_to_add)
 {
     // check if compile instructions are needed
     {
-        src_t** iter;
-        src_t** end;
-        vector_begin(files_to_add, (void***)&iter);
-        vector_end(files_to_add, (void***)&end);
+        src_t** iter = (src_t**)vector_begin(files_to_add);
+        src_t** end = (src_t**)vector_end(files_to_add);
         bool all_none_src = 1;
 
         for (; iter != end; iter++) {
@@ -242,18 +199,16 @@ void add_compile_instructions(vector_t* files_to_add)
         fh = fopen("cbuild.c", "w");
         panic_if(fh == NULL, "could not open cbuild.c: %s", strerror(errno));
     }
+
     // find pointer for assertion .. after auto_update[...]()[...];
     {
-        while (*s && strncmp(s, "auto_update", strlen("auto_update")) != 0) {
-            s++;
-        }
-        panic_if(*s == '\0', "could not add, compile instructions: cbuild.c does not contain 'auto_update();' consider adding it :)");
-        while (*s && *s != ';') {
-            s++;
-        }
+        s = strstr(s, "auto_update");
+        panic_if(s == NULL, "could not add, compile instructions: cbuild.c does not contain 'auto_update();' consider adding it :)");
+        s = index(s, ';');
         panic_if(*s == '\0', "syntax error in cbuild.c");
         s++;
     }
+
     // dump previously parsed stuff until after auto_update(); insert '\0' for cstr and store char in tmp for later
     char tmp;
     {
@@ -261,30 +216,30 @@ void add_compile_instructions(vector_t* files_to_add)
         *s = '\0';
         fprintf(fh, "%s\n", file_content);
     }
+
     // actually add compile instruction for every source file (.type == SRC_FILE) in src_files
     {
         fprintf(stdout, GREEN "Adding compile instructions: " RESET "\n");
-        src_t** iter;
-        src_t** end;
-        vector_begin(files_to_add, (void***)&iter);
-        vector_end(files_to_add, (void***)&end);
+        src_t** iter = (src_t**)vector_begin(files_to_add);
+        src_t** end = (src_t**)vector_end(files_to_add);
         fprintf(fh, "\n//Added by squirrel\n");
         char* path_buf = NULL;
         uint64_t path_buf_len = 0;
 
         for (; iter != end; iter++) {
             if ((*iter)->type == SRC_FILE) {
-                path_cat_or_panic(&path_buf, &path_buf_len, "lib/", (*iter)->file_name);
-                fprintf(stdout, "\t%s\n", path_buf);
-                fprintf(fh, "compile_object(\"%s\", FLAGS\"%s\", \"", path_buf, (*iter)->compile_flags);
                 path_cat_or_panic(&path_buf, &path_buf_len, "build/", (*iter)->file_name);
                 path_buf[strlen(path_buf) - 1] = 'o';
-                fprintf(fh, "%s\");\n", path_buf);
+                fprintf(fh, "compile_object(\"%s\", FLAGS, \"%s\", ", path_buf, (*iter)->compile_flags);
+                path_cat_or_panic(&path_buf, &path_buf_len, "lib/", (*iter)->file_name);
+                fprintf(fh, "\"%s\");\n", path_buf);
+                fprintf(stdout, "\t%s\n", path_buf);
             }
         }
         free(path_buf);
         fprintf(fh, "//Not Added by squirrel\n");
     }
+
     // dump rest of file_content into cbuild.c
     {
         *s = tmp;
@@ -309,16 +264,6 @@ bool file_exists(char* path)
     }
 }
 
-void stolower(char* s)
-{
-    while (*s) {
-        if (isalpha(*s)) {
-            *s = tolower(*s);
-        }
-        s++;
-    }
-}
-
 void get(char* identifier)
 {
     vector_t* files_to_get = find_src_by_identifier(identifier);
@@ -334,8 +279,8 @@ void get(char* identifier)
 
 vector_t* find_src_by_identifier(char* identifier)
 {
-    vector_t* files = NULL;
-    panic_if(vector_create(&files, 4) != SUCCESS, "could not allocate files buffer: bad_alloc");
+    vector_t* files = vector_create(4);
+    panic_if(files == NULL, "could not allocate files buffer: bad_alloc");
     uint64_t src_len = 0;
 
     // iterate over src from config.c and push to vec if identifier match
@@ -345,7 +290,8 @@ vector_t* find_src_by_identifier(char* identifier)
         uint64_t i;
         for (i = 0; i < src_len; i++) {
             if (strcmp(identifier, src[i].identifier) == 0) {
-                panic_if(vector_more(files, (void***)&files_more) != SUCCESS, "could not realloc files buffer: bad_alloc");
+                files_more = (src_t**)vector_more(files);
+                panic_if(files_more == NULL, "could not realloc files buffer: bad_alloc");
                 *files_more = &src[i];
             }
         }
@@ -353,8 +299,7 @@ vector_t* find_src_by_identifier(char* identifier)
 
     // check if anything was found if not panic with error msg -> used probably typed identifier wrong
     {
-        uint64_t size = 0;
-        vector_size(files, &size);
+        uint64_t size = vector_size(files);
         panic_if(size == 0, "could not find any src declarations with identifier: %s", identifier);
     }
 
@@ -363,10 +308,8 @@ vector_t* find_src_by_identifier(char* identifier)
 
 void download_files(vector_t* files_to_download)
 {
-    src_t** iter;
-    src_t** end;
-    vector_begin(files_to_download, (void***)&iter);
-    vector_end(files_to_download, (void***)&end);
+    src_t** iter = (src_t**)vector_begin(files_to_download);
+    src_t** end = (src_t**)vector_end(files_to_download);
     char* path_buf = NULL;
     uint64_t path_buf_len = 0;
     fprintf(stdout, GREEN "Downloading:\n" RESET);
@@ -401,16 +344,17 @@ void dump_identifier()
     uint64_t src_len = 0;
     src_t* src = get_src(&src_len);
 
-    bool already_seen = 0;
-    set_t* seen = NULL;
-    panic_if(set_create(&seen, set_str_djb2, set_str_cmp, src_len) != SUCCESS, "could not create seen hashset: bad_alloc");
+    set_t* seen = set_create(cmp_str, src_len);
+    panic_if(seen == NULL, "could not create seen hashset: bad_alloc");
 
     uint64_t i;
+    uint64_t hash;
     printf("Availabe identifier: \n");
     for (i = 0; i < src_len; i++) {
-        if (!set_contains(seen, src[i].identifier)) {
+        hash = hash_str_djb2(src[i].identifier);
+        if (!set_contains(seen, hash, src[i].identifier)) {
             printf("\t%s\n", src[i].identifier);
-            set_insert(seen, src[i].identifier);
+            set_insert(seen, hash, src[i].identifier);
         }
     }
     set_free(seen);
@@ -420,10 +364,8 @@ void info(char* identifier)
 {
     vector_t* src = find_src_by_identifier(identifier);
 
-    src_t** iter;
-    src_t** end;
-    vector_begin(src, (void***)&iter);
-    vector_end(src, (void***)&end);
+    src_t** iter = (src_t**)vector_begin(src);
+    src_t** end = (src_t**)vector_end(src);
 
     fprintf(stdout, GREEN "Info: " RESET "%s\n", identifier);
     for (; iter != end; iter++) {

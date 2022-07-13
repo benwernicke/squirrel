@@ -1,6 +1,6 @@
 #include "path.h"
 
-ds_error_t path_cat_(char** buf, uint64_t* buf_len, ...)
+int path_cat_(char** buf, uint64_t* buf_len, ...)
 {
     va_list ap;
     va_start(ap, buf_len);
@@ -11,7 +11,7 @@ ds_error_t path_cat_(char** buf, uint64_t* buf_len, ...)
         *buf_len += (curr_len << 1);
         *buf = realloc(*buf, *buf_len);
         if (buf == NULL) {
-            return BAD_ALLOC;
+            return -1;
         }
     }
     strcpy(*buf, next_arg);
@@ -27,7 +27,7 @@ ds_error_t path_cat_(char** buf, uint64_t* buf_len, ...)
             *buf_len += (curr_len << 1);
             *buf = realloc(*buf, *buf_len);
             if (*buf == NULL) {
-                return BAD_ALLOC;
+                return -1;
             }
         }
         if (add_slash) {
@@ -36,5 +36,5 @@ ds_error_t path_cat_(char** buf, uint64_t* buf_len, ...)
         strcat(*buf, next_arg);
     }
     va_end(ap);
-    return SUCCESS;
+    return 0;
 }
