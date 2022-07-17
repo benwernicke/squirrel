@@ -125,14 +125,18 @@ void configure_includes_of_file(char* path)
 
     s = strstr(s, "#include");
     while (s != NULL) {
-        s = strpbrk(s, ";<");
+        s = strpbrk(s, "\"<");
+        panic_if(s == NULL, "syntax error in: %s", path);
         if (*s == '"') {
             *s = '\0';
             fprintf(fh, "%s", prev);
             prev = ++s;
             s = index(s, '"');
+            panic_if(s == NULL, "syntax error in: %s", path);
             *s = '\0';
-            s = rindex(prev, '/');
+            do {
+                s--;
+            } while (*s && *s != '/');
             s++;
             fprintf(fh, "\"%s\"", s);
             s = index(s, '\0');
