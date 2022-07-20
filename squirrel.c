@@ -27,6 +27,10 @@ size_t write_data(void* ptr, size_t size, size_t nmemb, FILE* stream)
     return written;
 }
 
+// TODO: remove package
+// TODO: generate list of installed packages
+// TODO: auto install stuff build with squirrel
+
 #define GREEN "\033[32m"
 #define RESET "\033[39m"
 #define RED "\033[31m"
