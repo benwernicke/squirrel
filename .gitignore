@@ -2,3 +2,6 @@ build/*
 out
 log.log
 test/
+cbuild
+analysis
+gmon.out
