@@ -1,4 +1,4 @@
 build/*
-main
+out
 log.log
 test/

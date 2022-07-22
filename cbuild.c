@@ -1,52 +1,45 @@
 #define CBUILD
 #include "lib/cbuild.h"
 
-#define FLAGS "-g -Wall -pedantic -lcurl"
-#define FAST_FLAGS "-Ofast -march=native -lcurl"
+#define FLAGS "-g -Wall -pedantic"
+#define FAST_FLAGS " -Ofast -march=native"
+#define PROFILE_FLAGS " -pg -Wall -pedantic"
 
-void compile_everything(char* flags)
+void compile_all(char* flags)
 {
-    compile_object("squirrel.c", flags, "build/squirrel.o");
-    compile_object("config.c", flags, "build/config.o");
-    compile_object("lib/path.c", flags, "build/path.o");
-    compile_object("lib/set.c", flags, "build/set.o");
-    compile_object("lib/vector.c", flags, "build/vector.o");
-    compile_object("lib/hash.c", flags, "build/hash.o");
-    compile_object("lib/cmp.c", flags, "build/cmp.o");
-    compile_object_directory("main", flags, "build/");
+    compile_object("build/main.o", flags, "-lcurl", "main.c");
+    compile_object("build/config.o", flags, "", "config.c");
+    compile_object("build/path.o", flags, "", "lib/path.c");
+    compile_object("build/set.o", flags, "", "lib/set.c");
+    compile_object("build/vector.o", flags, "", "lib/vector.c");
+    compile_object("build/hash.o", flags, "", "lib/hash.c");
+    compile_object("build/cmp.o", flags, "", "lib/cmp.c");
+    compile_object_directory("out", flags, "-lcurl", "build/");
 }
 
-void clean()
+void clean(void)
 {
-    printf("rm build/*\n");
-    system("rm build/*");
-
-    printf("rm -rf test/*\n");
-    system("rm -r test/*");
-
-    printf("rm main\n");
-    system("rm main");
+    rm("build/*");
+    rm("out");
+    rm("test/*");
 }
 
 int main(int argc, char** argv)
 {
     auto_update();
-
     if (argc == 1) {
-        compile_everything(FLAGS);
+        compile_all(FLAGS);
+    } else if (strcmp(argv[1], "profile") == 0) {
+        compile_all(PROFILE_FLAGS);
+    } else if (strcmp(argv[1], "fast") == 0) {
+        compile_all(FAST_FLAGS);
+    } else if (strcmp(argv[1], "clean") == 0) {
+        clean();
+    } else if (strcmp(argv[1], "install") == 0) {
+        printf("cp out /usr/local/bin/\n");
+        system("cp out /usr/local/bin/");
     } else {
-        if (strcmp(argv[1], "clean") == 0) {
-            clean();
-        } else if (strcmp(argv[1], "clean-test") == 0) {
-            printf("rm -rf test/*\n");
-            system("rm -rf test/*");
-        } else if (strcmp(argv[1], "fast") == 0) {
-            clean();
-            compile_everything(FAST_FLAGS);
-        } else if (strcmp(argv[1], "install-user") == 0) {
-            printf("cp main ~/bin/squirrel\n");
-            system("cp main ~/bin/squirrel");
-        }
+        fprintf(stderr, "\033[31mError: \033[39m unknown option: %s\n", argv[1]);
     }
     return 0;
 }

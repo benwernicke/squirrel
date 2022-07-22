@@ -60,7 +60,11 @@
 #define run_command(comp, ...) run_command_(comp, __VA_ARGS__, NULL)
 void auto_update();
 void compile_object(char* path, char* flags, char* obj);
+#define compile_object(out, ...) print_comp_command_(COMPILER, "-c -o ", out, __VA_ARGS__, NULL), run_command(COMPILER, "-c -o", out, __VA_ARGS__, NULL)
 #define compile(out, ...) print_comp_command_(COMPILER, "-o", out, __VA_ARGS__, NULL), run_command_(COMPILER, "-o", out, __VA_ARGS__, NULL)
+#define rm(file)                                   \
+    printf(GREEN "removing:" RESET " %s\n", file); \
+    system("rm " file);
 
 #endif
 #ifdef CBUILD
@@ -103,19 +107,19 @@ static bool file_exists(char* path)
     }
 }
 
-void compile_object(char* path, char* flags, char* obj)
-{
-    time_t last_mod_src = file_last_mod(path);
-    time_t last_mod_obj = file_last_mod(obj);
-    bool exists = file_exists(obj);
+// void compile_object(char* path, char* flags, char* obj)
+//{
+// time_t last_mod_src = file_last_mod(path);
+// time_t last_mod_obj = file_last_mod(obj);
+// bool exists = file_exists(obj);
 
-    if (!exists || last_mod_src > last_mod_obj) {
-        printf(GREEN "compiling: " RESET "%s -o %s -c %s %s\n", COMPILER, obj, path, flags);
-        if (run_command(COMPILER, "-o", obj, "-c", path, flags) != 0) {
-            exit(1);
-        }
-    }
-}
+// if (!exists || last_mod_src > last_mod_obj) {
+// printf(GREEN "compiling: " RESET "%s -o %s -c %s %s\n", COMPILER, obj, path, flags);
+// if (run_command(COMPILER, "-o", obj, "-c", path, flags) != 0) {
+// exit(1);
+//}
+//}
+//}
 
 static time_t file_last_mod(char* path)
 {
@@ -153,21 +157,24 @@ static bool is_objfile_(char* name, uint64_t len)
     return 1;
 }
 
-void compile_object_directory(char* out, char* flags, char* path)
+void compile_object_directory(char* out, char* flags, char* extra, char* path)
 {
     DIR* dir = opendir(path);
     if (dir == NULL) {
         fprintf(stderr, RED "error: " RESET "could not open dir: %s, %s\n", path, strerror(errno));
     }
     struct dirent* entry = NULL;
-    uint64_t cmd_len = strlen(COMPILER) + strlen(out) + 256 + strlen(flags);
-    uint64_t cmd_used = cmd_len - 256;
+    uint64_t cmd_len = strlen(COMPILER) + strlen(out) + 256 + strlen(flags) + 4 + strlen(extra);
+    uint64_t cmd_used = cmd_len - 256 + 4;
     char* cmd = malloc(cmd_len);
     strcpy(cmd, COMPILER);
     strcat(cmd, " -o ");
     strcat(cmd, out);
     strcat(cmd, " ");
     strcat(cmd, flags);
+    strcat(cmd, " ");
+    strcat(cmd, extra);
+    strcat(cmd, " ");
     uint64_t len;
     while ((entry = readdir(dir)) != NULL) {
         if (strcmp(entry->d_name, "..") == 0 || strcmp(entry->d_name, ".") == 0) {
