@@ -357,7 +357,7 @@ void dump_identifier()
 
     uint64_t i;
     uint64_t hash;
-    printf("Availabe identifier: \n");
+    printf("Availabe packages: \n");
     for (i = 0; i < src_len; i++) {
         hash = hash_str_djb2(src[i].identifier);
         if (!set_contains(seen, hash, src[i].identifier)) {
@@ -421,7 +421,7 @@ void parse_argv(char** argv)
         }
     } else if (strcmp(*argv, "usage") == 0) {
         help();
-    } else if (strcmp(*argv, "identifiers") == 0) {
+    } else if (strcmp(*argv, "packages") == 0) {
         dump_identifier();
     } else if (strcmp(*argv, "info") == 0) {
         argv++;
